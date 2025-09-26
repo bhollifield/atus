@@ -49,6 +49,45 @@ addToUpdateSetUtils.prototype = {
         return true;
     },
 
+    /*
+     * Ensure a child update set name is unique among siblings (same parent).
+     * If a conflict exists, append a space and a number starting at 2 and
+     * increment until the name is unique. Returns the unique name string.
+     */
+    _ensureUniqueChildName: function(baseName, parentId) {
+        if (gs.nil(parentId) || gs.nil(baseName)) {
+            return baseName;
+        }
+
+        // Normalize and remove an existing numeric suffix (e.g., "Name 2") so we don't get "Name 2 2"
+        var base = baseName.toString();
+        // Trim whitespace
+        base = base.replace(/\s+$/g, '');
+
+        // If the name ends with a space followed by a number, strip that segment
+        // e.g., "My Set 2" -> "My Set". This makes numbering predictable.
+        var suffixMatch = base.match(/^(.*)\s+(\d+)$/);
+        if (suffixMatch && suffixMatch.length === 3) {
+            base = suffixMatch[1];
+        }
+
+        var candidate = base;
+        var suffix = 2;
+
+        // Loop until we find a name that doesn't exist for the same parent
+        while (true) {
+            var gr = new GlideRecord('sys_update_set');
+            gr.addQuery('parent', parentId);
+            gr.addQuery('name', candidate);
+            gr.query();
+            if (!gr.next()) {
+                return candidate;
+            }
+            candidate = base + ' ' + suffix;
+            suffix++;
+        }
+    },
+
     addToUpdateSet: function(tableRec) {
         var userMessage = "";
         var currentSetID = this.updateSetAPI.get();
@@ -326,6 +365,10 @@ addToUpdateSetUtils.prototype = {
                 this._addManagedDoc(tableRec, tableName);
                 continueProcessing = false;
                 break;
+            case "sys_atf_test_suite":
+                this._addATFSuite(tableRec, tableName);
+                continueProcessing = false;
+                break;
             case "sys_atf_test":
                 this._addATF(tableRec, tableName);
                 continueProcessing = false;
@@ -336,6 +379,14 @@ addToUpdateSetUtils.prototype = {
                 break;
             case "sys_embedded_tour_guide":
                 this._addGuidedTour(tableRec, tableName);
+                continueProcessing = false;
+                break;
+            case "sys_ui_page":
+                this._addUIPage(tableRec, tableName);
+                continueProcessing = false;
+                break;
+            case "sys_script_include":
+                this._addScriptInclude(tableRec, tableName);
                 continueProcessing = false;
                 break;
 
@@ -526,6 +577,14 @@ addToUpdateSetUtils.prototype = {
                 this._addDecisionTable(tableRec, tableName);
                 continueProcessing = false;
                 break;
+
+            /********************* IP Filter Criteria *****************************/
+            case "sys_auth_filter_criteria":
+                this._addIPFilterCriteria(tableRec, tableName);
+                continueProcessing = false;
+                break;
+
+            //
                 
             default:
                 processParentTable = true;
@@ -756,6 +815,8 @@ addToUpdateSetUtils.prototype = {
             currentSet.parent = parentUpdateSetID;
             currentSet.application = tableRecScope;
             currentSet.is_default = false;
+            // Ensure the child update set name is unique among siblings for this parent
+            currentSet.name = this._ensureUniqueChildName(currentSet.name, parentUpdateSetID);
             newSetID = currentSet.insert();
         }
 
@@ -790,7 +851,7 @@ addToUpdateSetUtils.prototype = {
         // Default to global
         var scopeDetails = {};
         scopeDetails.id = "global";
-        scopeDetails.name = "global";
+        scopeDetails.name = "Global";
 
         if (tableRec.isValidField("sys_scope") && !gs.nil(tableRec.getValue("sys_scope"))) {
             scopeDetails.id = tableRec.sys_scope.toString();
@@ -802,7 +863,7 @@ addToUpdateSetUtils.prototype = {
             choiceSet.query();
             if (choiceSet.next()) {
                 scopeDetails.id = choiceSet.sys_scope.toString();
-                scopeDetails.name = choiceSet.sys_scope.scope.toString();
+                scopeDetails.name = choiceSet.sys_scope.scope.getDisplayValue();
             }
             /* If returnFieldName == "name" as last resort check the sys_meta for the record's scope name
              * This is important when executing the scope scripts for table permission purposes and scope specific processing
@@ -2612,6 +2673,42 @@ addToUpdateSetUtils.prototype = {
         }
     },
 
+    _addATFSuite: function(atfTestSuite, tableName) {
+        this.saveRecord(atfTestSuite);
+        var testSuiteID = atfTestSuite.getValue("sys_id");
+
+        //Add ATF Tests and dependencies
+        var testSuiteTest = new GlideRecord("sys_atf_test_suite_test");
+        testSuiteTest.addQuery("test_suite", testSuiteID);
+        testSuiteTest.query();
+        while (testSuiteTest.next()) {
+            var atfTest = new GlideRecord("sys_atf_test");
+            if (atfTest.get(testSuiteTest.getValue("test"))) {
+                this._addATF(atfTest, "sys_atf_test");
+            }
+            this.saveRecord(testSuiteTest);
+        }
+        //Add Child Test Suites
+        var childTestSuite = new GlideRecord("sys_atf_test_suite");
+        childTestSuite.addQuery("parent", testSuiteID);
+        childTestSuite.query();
+        while (childTestSuite.next()) {
+            this._addATFSuite(childTestSuite);
+        }
+        //Add Test Suite Schedule Run
+        var testSuiteSchedule = new GlideRecord("sys_atf_schedule_run");
+        testSuiteSchedule.addQuery("test_suite", testSuiteID);
+        testSuiteSchedule.query();
+        while (testSuiteSchedule.next()) {
+            //Add Test Suite Schedule Run's Schedule
+            var schedule = new GlideRecord("sys_atf_schedule");
+            if (schedule.get(testSuiteSchedule.getValue("schedule"))) {
+                this.saveRecord(schedule);
+            }
+            this.saveRecord(testSuiteSchedule);
+        }
+    },
+
     _addATF: function(atfTest, tableName) {
         this.saveRecord(atfTest);
         var testID = atfTest.getValue("sys_id");
@@ -3314,6 +3411,22 @@ addToUpdateSetUtils.prototype = {
         formSection.query();
         while (formSection.next()) {
             this.saveRecord(formSection);
+        }
+        //Add section elements
+        var sectionElement = new GlideRecord("sys_ui_element");
+        sectionElement.addQuery("sys_ui_section", "IN", uiSectionList.toString());
+        sectionElement.query();
+        while (sectionElement.next()) {
+            //Add UI Formatter
+            if (!sectionElement.sys_ui_formatter.nil()) {
+                var uiFormatter = new GlideRecord("sys_ui_formatter");
+                uiFormatter.addQuery("sys_id", sectionElement.sys_ui_formatter.toString());
+                uiFormatter.setLimit(1);
+                uiFormatter.query();
+                if (uiFormatter.next())
+                    this.saveRecord(uiFormatter);
+            }
+            this.saveRecord(sectionElement);
         }
         //Add list views
         var listView = new GlideRecord("sys_ui_list");
@@ -4650,8 +4763,9 @@ addToUpdateSetUtils.prototype = {
             }
 		}
 
-        //Disabled by default - only needed if Decision Table results are needed
-        /*var decisionMultiResult = new GlideRecord("sys_decision_multi_result");
+        //Enabled by default - only needed if Decision Table results are needed
+        //Disable if results not needed
+        var decisionMultiResult = new GlideRecord("sys_decision_multi_result");
 		decisionMultiResult.addQuery("decision_table", recID);
 		decisionMultiResult.query();
 		while (decisionMultiResult.next()) {
@@ -4670,10 +4784,60 @@ addToUpdateSetUtils.prototype = {
             while (variableValue.next()) {
                 this.saveRecord(variableValue);
             }
-		}*/
+		}
 	},
 
 	/********************* End Decision Table Functions *********************/
+
+    //Add UI Page
+    _addUIPage: function(record, tableName) {
+        this.saveRecord(record);
+
+        //Add ACLs
+        var aclRec = new GlideRecord('sys_security_acl');
+        aclRec.addQuery("name", record.endpoint.toString().replace(".do",""));
+        aclRec.addQuery("type","ui_page");
+		aclRec.query();
+		while (aclRec.next()) {
+            this._addACLDependencies(aclRec, aclRec.getTableName());
+        }
+    },
+
+    //Add Script Include
+    _addScriptInclude: function(record, tableName) {
+        this.saveRecord(record);
+
+        //Add ACLs
+        if (record.client_callable.toString() == "true"){
+            var aclRec = new GlideRecord('sys_security_acl');
+            aclRec.addQuery("name", record.name.toString());
+            aclRec.addQuery("type","client_callable_script_include");
+            aclRec.query();
+            while (aclRec.next()) {
+                this._addACLDependencies(aclRec, aclRec.getTableName());
+            }
+        }
+    },
+
+    //Add IP Filter Criteria
+    _addIPFilterCriteria: function(record, tableName) {
+        this.saveRecord(record);
+
+        //Add IP Ranges
+        var ipRange = new GlideRecord('sys_ip_address_range');
+        ipRange.addQuery("sys_ip_filter_criteria", record.sys_id.toString());
+        ipRange.query();
+        while (ipRange.next()) {
+            this.saveRecord(ipRange);
+        }
+        //Subnets
+        var subnet = new GlideRecord('sys_ip_address_subnet');
+        subnet.addQuery("sys_ip_filter_criteria", record.sys_id.toString());
+        subnet.query();
+        while (subnet.next()) {
+            this.saveRecord(subnet);
+        }
+    },
 
     type: 'addToUpdateSetUtils'
 };
