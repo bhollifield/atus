@@ -4765,12 +4765,13 @@ addToUpdateSetUtils.prototype = {
 
         //Enabled by default - only needed if Decision Table results are needed
         //Disable if results not needed
-        var decisionMultiResult = new GlideRecord("sys_decision_multi_result");
+        //sys_decision_multi_result not needed - captured via answerTable above
+        /*var decisionMultiResult = new GlideRecord("sys_decision_multi_result");
 		decisionMultiResult.addQuery("decision_table", recID);
 		decisionMultiResult.query();
 		while (decisionMultiResult.next()) {
 			this.saveRecord(decisionMultiResult);
-		}
+		}*/
         
         var decisionMultiResultElement = new GlideRecord("sys_decision_multi_result_element");
 		decisionMultiResultElement.addQuery("model", recID);
