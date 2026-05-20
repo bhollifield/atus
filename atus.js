@@ -1007,8 +1007,15 @@ addToUpdateSetUtils.prototype = {
     _addKnowledge: function(tableRec, tableName) {
         this._addKnowledgeArticle(tableRec, tableName);
 
-        var canReadList = tableRec.getValue('can_read_user_criteria').split(",");
-        var cannotReadList = tableRec.getValue('cannot_read_user_criteria').split(",");
+        var canReadList = []
+        var cannotReadList = [];
+
+        if (!tableRec.can_read_user_criteria.nil()){
+            canReadList = tableRec.getValue('can_read_user_criteria').split(",");
+        }
+        if (!tableRec.cannot_read_user_criteria.nil()){
+            cannotReadList = tableRec.getValue('cannot_read_user_criteria').split(",");
+        }
 
         // Check to ensure Knowledge Blocks plugin is active
         if (new GlidePluginManager().isActive("com.snc.knowledge_blocks")) {
@@ -1022,7 +1029,10 @@ addToUpdateSetUtils.prototype = {
                 this._addKnowledgeArticle(knowledgeBlock, knowledgeBlock.getTableName());
 
                 var userCriteriaID;
-                var blockCanReadList = knowledgeBlock.getValue('can_read_user_criteria').split(",");
+                var blockCanReadList = [];
+                if (!knowledgeBlock.can_read_user_criteria.nil()){
+                    blockCanReadList = knowledgeBlock.getValue('can_read_user_criteria').split(",");
+                }
                 for (var c = 0; c < blockCanReadList.length; c++) {
                     userCriteriaID = blockCanReadList[c].toString();
                     if (canReadList.toString().indexOf(userCriteriaID) == -1) {
@@ -1030,7 +1040,10 @@ addToUpdateSetUtils.prototype = {
                     }
                 }
 
-                var blockCannotReadList = knowledgeBlock.getValue('cannot_read_user_criteria').split(",");
+                var blockCannotReadList = [];
+                if (!knowledgeBlock.cannot_read_user_criteria.nil()){
+                    blockCannotReadList = knowledgeBlock.getValue('cannot_read_user_criteria').split(",");
+                }
                 for (var n = 0; n < blockCannotReadList.length; n++) {
                     userCriteriaID = blockCannotReadList[n].toString();
                     if (cannotReadList.toString().indexOf(userCriteriaID) == -1) {
@@ -3715,7 +3728,10 @@ addToUpdateSetUtils.prototype = {
 
         //Add ACLs
         if (!record.enforce_acl.nil()) {
-            var aclArray = record.getValue('enforce_acl').split(',');
+            var aclArray = [];
+            if (!record.enforce_acl.nil()){
+                aclArray = record.getValue('enforce_acl').split(',');
+            }
             for (var i = 0; i < aclArray.length; i++) {
                 var aclRec = new GlideRecord('sys_security_acl');
                 if (aclRec.get(aclArray[i])) {
@@ -3765,7 +3781,10 @@ addToUpdateSetUtils.prototype = {
 
         //Add ACLs
         if (!record.enforce_acl.nil()) {
-            var aclArray = record.getValue('enforce_acl').split(',');
+            var aclArray = [];
+            if (!record.enforce_acl.nil()){
+                aclArray = record.getValue('enforce_acl').split(',');
+            }
             for (var i = 0; i < aclArray.length; i++) {
                 var aclRec = new GlideRecord('sys_security_acl');
                 if (aclRec.get(aclArray[i])) {
