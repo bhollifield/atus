@@ -15,8 +15,9 @@ addToUpdateSetUtils.prototype = {
         this.clientSession = gs.getSession();
 
         //Variables for error handling
-        this.scriptSysID = "6ba1c8a24f5da740" + "d1676bd18110c79a"; // valid use of sys_id, avoid scan check findings
         this.scriptAPIName = "global.addToUpdateSetUtils";
+        var scriptIncludeGR = new GlideRecord("sys_script_include");
+        this.scriptSysID = scriptIncludeGR.get("api_name", this.scriptAPIName) ? scriptIncludeGR.getUniqueValue() : "";
 
         //If records are added to an update set from certain tables, downstream issues may arise.
         //sys_translated_text records should never be included because of issues during the upgrade process.  They are automatically included within the parent XML record. Please see this KB article for details: https://support.servicenow.com/kb?id=kb_article_view&sysparm_article=KB0966221
